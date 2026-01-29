@@ -1,0 +1,17 @@
+../Drivers/CMSIS/Include/core_cm4.h:1938:34:__NVIC_SystemReset	1
+../Core/Src/firmware_update.c:44:6:FirmwareUpdate_Init	1
+../Core/Src/firmware_update.c:58:13:StephanoI_PowerOn	1
+../Core/Src/firmware_update.c:68:13:StephanoI_Reset	1
+../Core/Src/firmware_update.c:80:6:FirmwareUpdate_Start	9
+../Core/Src/firmware_update.c:202:6:FirmwareUpdate_IsActive	1
+../Core/Src/firmware_update.c:208:13:ParseWESPPPacket	6
+../Core/Src/firmware_update.c:227:13:CreateWESPPPacket	5
+../Core/Src/firmware_update.c:242:13:GetVersionTimestamp	5
+../Core/Src/firmware_update.c:260:13:ProcessReceivedData	7
+../Core/Src/firmware_update.c:286:6:FirmwareUpdate_UART_IRQHandler	1
+../Core/Src/firmware_update.c:294:13:HandleTokenExchange	6
+../Core/Src/firmware_update.c:352:13:HandleFirmwareSize	8
+../Core/Src/firmware_update.c:433:13:HandleFirmwarePacket	13
+../Core/Src/firmware_update.c:555:6:FirmwareUpdate_Process	4
+../Core/Src/firmware_update.c:569:6:HAL_UART_RxCpltCallback	3
+../Core/Src/firmware_update.c:590:6:HAL_UART_ErrorCallback	2

@@ -1,0 +1,6 @@
+../Core/Src/flash_ops.c:36:6:Flash_EraseSector	3
+../Core/Src/flash_ops.c:62:6:Flash_WriteData	7
+../Core/Src/flash_ops.c:108:6:Flash_ReadData	1
+../Core/Src/flash_ops.c:114:6:Flash_GetCurrentVersion	3
+../Core/Src/flash_ops.c:139:6:Flash_CheckSpaceAvailable	1
+../Core/Src/flash_ops.c:145:6:Flash_ProgramFirmwareData	3

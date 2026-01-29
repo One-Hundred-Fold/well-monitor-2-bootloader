@@ -1,0 +1,17 @@
+../Drivers/CMSIS/Include/core_cm4.h:1938:34:__NVIC_SystemReset	4	static,ignoring_inline_asm
+../Core/Src/firmware_update.c:44:6:FirmwareUpdate_Init	8	static
+../Core/Src/firmware_update.c:58:13:StephanoI_PowerOn	8	static
+../Core/Src/firmware_update.c:68:13:StephanoI_Reset	8	static
+../Core/Src/firmware_update.c:80:6:FirmwareUpdate_Start	80	static,ignoring_inline_asm
+../Core/Src/firmware_update.c:202:6:FirmwareUpdate_IsActive	4	static
+../Core/Src/firmware_update.c:208:13:ParseWESPPPacket	24	static
+../Core/Src/firmware_update.c:227:13:CreateWESPPPacket	24	static
+../Core/Src/firmware_update.c:242:13:GetVersionTimestamp	32	static
+../Core/Src/firmware_update.c:260:13:ProcessReceivedData	8	static
+../Core/Src/firmware_update.c:286:6:FirmwareUpdate_UART_IRQHandler	16	static
+../Core/Src/firmware_update.c:294:13:HandleTokenExchange	504	static
+../Core/Src/firmware_update.c:352:13:HandleFirmwareSize	296	static
+../Core/Src/firmware_update.c:433:13:HandleFirmwarePacket	1448	static
+../Core/Src/firmware_update.c:555:6:FirmwareUpdate_Process	8	static
+../Core/Src/firmware_update.c:569:6:HAL_UART_RxCpltCallback	24	static
+../Core/Src/firmware_update.c:590:6:HAL_UART_ErrorCallback	16	static
