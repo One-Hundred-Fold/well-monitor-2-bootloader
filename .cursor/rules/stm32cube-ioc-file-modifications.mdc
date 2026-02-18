@@ -1,0 +1,113 @@
+---
+alwaysApply: true
+description: STM32Cube .ioc file modification rules and peripheral configuration
+---
+
+# STM32Cube .ioc File Modification Rules
+
+## Critical Rule: .ioc File Changes
+
+When modifications require changes to peripheral configuration, pin assignments, clock settings, or other hardware configuration in an STM32Cube project, **ALWAYS** follow this procedure.
+
+## Required Procedure
+
+### Step 1: Determine if .ioc Modification is Needed
+
+If the change requires:
+- Peripheral configuration (UART baud rate, GPIO modes, etc.)
+- Pin reassignment
+- Clock configuration
+- Interrupt priorities
+- DMA settings
+- Any hardware-related configuration
+
+Then `.ioc` file modification is required.
+
+### Step 2: Attempt Automatic Modification (If Possible)
+
+**ONLY** if you can:
+1. **Correctly parse** the `.ioc` file format (XML-based)
+2. **Accurately identify** the exact section to modify
+3. **Maintain XML structure** and formatting
+4. **Preserve all other settings** unchanged
+5. **Validate** the XML syntax after modification
+
+Then you may attempt automatic modification.
+
+### Step 3: If Automatic Modification is NOT Possible
+
+**MUST** follow this sequence:
+
+1. **STOP** code modifications
+2. **INSTRUCT** the user explicitly:
+   - What needs to be changed in the `.ioc` file
+   - Step-by-step instructions for STM32CubeIDE
+   - OR specific XML elements to modify if user will edit manually
+3. **REQUIRE** the user to:
+   - Make the `.ioc` changes
+   - Regenerate code from STM32CubeIDE (if applicable)
+4. **VERIFY** the changes before proceeding:
+   - Read the modified `.ioc` file
+   - Confirm the changes are correct
+   - Check that generated code reflects the changes
+5. **ONLY THEN** continue with code modifications
+
+### Step 4: Verification Checklist
+
+Before proceeding after `.ioc` changes, verify:
+
+- [ ] `.ioc` file XML is well-formed (no syntax errors)
+- [ ] Requested configuration changes are present
+- [ ] No unintended changes to other peripherals
+- [ ] Generated code files reflect the changes
+- [ ] USER CODE blocks are preserved (if applicable)
+
+## Example Workflow
+
+### Scenario: Changing UART Baud Rate
+
+1. **Identify**: Change requires UART configuration modification
+2. **Assess**: Can I safely modify `.ioc` XML? 
+   - If YES: Modify and verify
+   - If NO: Proceed to instruction phase
+3. **Instruct User** (if needed):
+   ```
+   Please modify the .ioc file:
+   1. Open well-monitor-2-bootloader.ioc in STM32CubeIDE
+   2. Navigate to Connectivity > USART2
+   3. Change Baud Rate to 230400
+   4. Save and regenerate code
+   ```
+4. **Wait for User**: Request confirmation that changes are made
+5. **Verify**: Read `.ioc` file and check generated code
+6. **Continue**: Proceed with code modifications
+
+## Prohibited Actions
+
+- **DO NOT** modify `.ioc` file without understanding XML structure
+- **DO NOT** proceed with code changes if `.ioc` changes are needed but not made
+- **DO NOT** assume `.ioc` changes - always verify
+- **DO NOT** skip verification step
+
+## .ioc File Location
+
+The `.ioc` file for this project is:
+- [well-monitor-2-bootloader.ioc](mdc:well-monitor-2-bootloader.ioc)
+
+## STM32CubeIDE Integration
+
+Remember that:
+- `.ioc` file changes trigger code regeneration
+- Generated code may overwrite manual changes outside USER CODE blocks
+- Always coordinate `.ioc` changes with code modifications
+- Verify generated code after `.ioc` modifications
+
+## When User Must Use STM32CubeIDE
+
+If the change requires:
+- Visual pin configuration
+- Complex peripheral setup
+- Multiple interdependent settings
+- Clock tree configuration
+
+**ALWAYS** instruct user to use STM32CubeIDE GUI rather than manual XML editing.

@@ -21,7 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "firmware_update.h"
+#include "bootloader_logic.h"
+#include "bootloader_download.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -94,11 +95,8 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   
-  // Initialize firmware update module
-  FirmwareUpdate_Init();
-  
-  // Start firmware update process
-  FirmwareUpdate_Start();
+  /* Run second-stage bootloader: sector 6/7 search, jump, or BLE download */
+  Bootloader_Run();
 
   /* USER CODE END 2 */
 
@@ -109,10 +107,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    // Process firmware update
-    FirmwareUpdate_Process();
-    
-    // Small delay to prevent CPU spinning
+    Bootloader_Download_Process();
     HAL_Delay(10);
   }
   /* USER CODE END 3 */

@@ -1,0 +1,10 @@
+../Drivers/CMSIS/Include/core_cm4.h:1938:34:__NVIC_SystemReset	1
+../Core/Src/bootloader_logic.c:24:13:check_magic	3
+../Core/Src/bootloader_logic.c:31:17:get_metadata_size	1
+../Core/Src/bootloader_logic.c:40:13:is_validation_download	1
+../Core/Src/bootloader_logic.c:46:13:is_validation_ready	3
+../Core/Src/bootloader_logic.c:54:13:verify_sha256_sector6_download	1
+../Core/Src/bootloader_logic.c:70:13:verify_sha256_sector7_ready	1
+../Core/Src/bootloader_logic.c:80:23:search_sector_metadata	3
+../Core/Src/bootloader_logic.c:94:13:jump_to_application	1
+../Core/Src/bootloader_logic.c:104:6:Bootloader_Run	12

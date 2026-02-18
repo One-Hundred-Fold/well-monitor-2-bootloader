@@ -83,6 +83,7 @@ clean:
 
 post-build:
 	arm-none-eabi-objcopy -O binary "well-monitor-2-bootloader.elf" "well-monitor-2-bootloader.bin"
+	sh -c "../Scripts/bootloader_postbuild.sh well-monitor-2-bootloader.elf"
 	-@echo ' '
 
 secondary-outputs: $(SIZE_OUTPUT) $(OBJDUMP_LIST)

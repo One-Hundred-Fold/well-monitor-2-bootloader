@@ -1,0 +1,69 @@
+---
+alwaysApply: true
+description: STM32Cube code modification rules - USER CODE blocks
+---
+
+# STM32Cube USER CODE Block Rules
+
+## Critical Rule: USER CODE Blocks
+
+When modifying STM32Cube-generated files (typically in `Core/Src/` and `Core/Inc/`), **ALWAYS** check for "USER CODE BEGIN" and "USER CODE END" comment blocks.
+
+### Required Behavior
+
+1. **If USER CODE blocks exist**: 
+   - **ONLY** make modifications within existing "USER CODE BEGIN" / "USER CODE END" blocks
+   - **NEVER** modify code outside these blocks
+   - If you need to add new code, add it within an existing USER CODE block, or inform the user that a new USER CODE block must be added via STM32CubeIDE
+
+2. **If USER CODE blocks do NOT exist**:
+   - You may modify the file normally
+   - However, prefer to suggest using STM32CubeIDE to regenerate the file with proper USER CODE blocks
+
+### Example USER CODE Blocks
+
+```c
+/* USER CODE BEGIN Includes */
+#include "my_custom_header.h"
+/* USER CODE END Includes */
+
+/* USER CODE BEGIN PV */
+static uint32_t my_variable = 0;
+/* USER CODE END PV */
+
+/* USER CODE BEGIN 0 */
+void my_custom_function(void) {
+    // Your code here
+}
+/* USER CODE END 0 */
+```
+
+### Why This Matters
+
+- STM32CubeIDE regenerates code sections outside USER CODE blocks
+- Modifications outside USER CODE blocks will be **LOST** when the project is regenerated
+- USER CODE blocks are preserved during code generation
+
+### Files Typically Affected
+
+- `Core/Src/main.c`
+- `Core/Src/stm32f4xx_hal_msp.c`
+- `Core/Src/stm32f4xx_it.c`
+- `Core/Inc/main.h`
+- Other STM32Cube-generated files
+
+### When Adding New Code
+
+If you need to add code but no appropriate USER CODE block exists:
+1. **DO NOT** add code outside USER CODE blocks
+2. **INFORM** the user that they need to:
+   - Use STM32CubeIDE to add a USER CODE block, OR
+   - Manually add the USER CODE block markers, OR
+   - Regenerate the project to get proper block structure
+
+### Verification
+
+Before making any modification to an STM32Cube file:
+1. Search for "USER CODE BEGIN" in the file
+2. If found, ensure all modifications are within these blocks
+3. If not found, proceed with caution and inform the user

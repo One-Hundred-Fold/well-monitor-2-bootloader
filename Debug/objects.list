@@ -1,5 +1,7 @@
+"./Core/Src/app_metadata.o"
 "./Core/Src/at_command.o"
-"./Core/Src/firmware_update.o"
+"./Core/Src/bootloader_download.o"
+"./Core/Src/bootloader_logic.o"
 "./Core/Src/flash_ops.o"
 "./Core/Src/main.o"
 "./Core/Src/sha256.o"

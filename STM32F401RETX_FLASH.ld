@@ -41,11 +41,11 @@ _estack = ORIGIN(RAM) + LENGTH(RAM); /* end of "RAM" Ram type memory */
 _Min_Heap_Size = 0x600; /* required amount of heap */
 _Min_Stack_Size = 0x400; /* required amount of stack */
 
-/* Memories definition */
+/* Memories definition - Second-stage bootloader runs in sector 4 (64KB) */
 MEMORY
 {
   RAM    (xrw)    : ORIGIN = 0x20000000,   LENGTH = 96K
-  FLASH    (rx)    : ORIGIN = 0x8000000,   LENGTH = 512K
+  FLASH  (rx)     : ORIGIN = 0x08010000,   LENGTH = 64K
 }
 
 /* Sections */
@@ -58,6 +58,7 @@ SECTIONS
     . = ALIGN(4);
     KEEP(*(.isr_vector)) /* Startup code */
     . = ALIGN(4);
+    FILL(0xFF);
   } >FLASH
 
   /* The program code and other data into "FLASH" Rom type memory */
@@ -75,6 +76,7 @@ SECTIONS
 
     . = ALIGN(4);
     _etext = .;        /* define a global symbols at end of code */
+    FILL(0xFF);
   } >FLASH
 
   /* Constant data into "FLASH" Rom type memory */
@@ -84,6 +86,7 @@ SECTIONS
     *(.rodata)         /* .rodata sections (constants, strings, etc.) */
     *(.rodata*)        /* .rodata* sections (constants, strings, etc.) */
     . = ALIGN(4);
+    FILL(0xFF);
   } >FLASH
 
   .ARM.extab (READONLY) : /* The "READONLY" keyword is only supported in GCC11 and later, remove it if using GCC10 or earlier. */
@@ -148,6 +151,17 @@ SECTIONS
     _edata = .;        /* define a global symbol at data end */
 
   } >RAM AT> FLASH
+
+  /* Bootloader metadata at end of binary (8-byte aligned); post-build fills SHA256 digest */
+  .app_metadata :
+  {
+    . = ALIGN(8);
+    _app_metadata_start = .;
+    KEEP(*(.app_metadata))
+    _app_metadata_end = .;
+    _flash_image_end = .;
+    FILL(0xFF);
+  } >FLASH
 
   /* Uninitialized data section into "RAM" Ram type memory */
   . = ALIGN(4);
