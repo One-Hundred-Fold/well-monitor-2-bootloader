@@ -1,6 +1,6 @@
 Refer to "C:\Users\jthom\OneDrive\Documents\STMicro\STM32F4x1\um1725-description-of-stm32f4-hal-and-lowlayer-drivers-stmicroelectronics.pdf",  "C:\Users\jthom\OneDrive\Documents\STMicro\STM32F4x1\rm0368-stm32f401xbc-and-stm32f401xde-advanced-armbased-32bit-mcus-stmicroelectronics.pdf", "C:\Users\jthom\OneDrive\Documents\100 Fold\Stephano\UM_Stephano-I_2617011025000 (rev1.2).pdf", "C:\Users\jthom\OneDrive\Documents\Espressif\esp-at-en-v2.3.0.0_esp32c3-1067-ge0acd9b0c7-esp32.pdf", and "C:\Users\jthom\OneDrive\Documents\100 Fold\Stephano\Cursor on Stephano Setup for WE SPP-Like Protocol.txt".
 
-Before creating or modifying an files, ask me to clarify anything that is not well-understood. ALso, advise me if I have sufficient Cursor credit balance to complete this work with up to 6 minor revisions.
+Before creating or modifying files, ask me to clarify anything that is not well understood. Also, advise me if I have sufficient Cursor credit balance to complete this work with up to 6 minor revisions.
 
 The well-monitor-2-bootloader application is intended to be a second-stage bootloader. The application on which the second-stage bootloader operates will be referred to as "the application". Replace the existing well-monitor-2-bootloader design with the following.
 
@@ -17,37 +17,43 @@ This is the definition of an application's metadata structure. It is located at 
 	an 8-byte invalidation array, initialized to {0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF},
 	and a 32-byte SHA256 digest of the binary build artifact, except for this digest, with all bytes initialized to 0xff (a post-build step will override this).
 
-Ensure that all unused bytes in the binary build artifact have the value 0xff.
+Ensure that all unused bytes in the binary build artifact are set to 0xff.
 
-In main.c, after the pre-existing initialization calls, create a second-stage bootloader that will search flash memory sector 6 for an application  identifed by the metadata structure magic number arrays defined above, aligned to an 8-byte boundary.
+In main.c, after the pre-existing initialization calls, create a second-stage bootloader that searches flash memory sector 6 for an application identified by the metadata structure magic number arrays defined above, aligned to an 8-byte boundary.
 
-On finding the magic number arrays, the second-stage bootloader must check whether the content of the 8-byte validation array of the metadata structure is all 0xff bytes and, if it is, calculate the SHA256 digest of the found application, starting at the beginning of sector 6 and including the metadata structure, up to but not including the validation array. The second-stage bootloader will then complete the digest by using a substitute 8-byte validation aray initialized as defined above, and a substitue invalidation array, also initialized as defined above. The metadata digest must not be included in the calculation. If the complete, calculated digest matches the digest stored in the meatadata structure, the application is verified as a valid application in the download state.
+On finding the magic number arrays, the second-stage bootloader must check whether the content of the 8-byte validation array of the metadata structure is all 0xff bytes and, if it is, calculate the SHA256 digest of the found application, starting at the beginning of sector 6 and including the metadata structure, up to but not including the validation array. The second-stage bootloader will then complete the digest using a substitute 8-byte validation array and a substitute invalidation array, both initialized as defined above. The metadata digest must not be included in the calculation. If the calculated digest matches the digest stored in the metadata structure, the application is verified as valid in the download state.
 
-If such an application is found in sector 6, the second-stage bootloader must then reboot the system so that the first stage bootloader can take over.
+If such an application is found in sector 6, the second-stage bootloader must reboot the system so that the first-stage bootloader can take over.
 
-If such an application is not found in sector 6, then the second-stage bootloader must search flash memory sector 7 for an valid application in the ready-to-run state. On finding the magic number arrays, the second-stage bootloader must check whether the content of the 8-byte validation array of the metadata structure is {0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00}, and that the invalidation array of the metadata structure is {0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF}, and, if it is, calculate the SHA256 digest of the found application, starting at the beginning of sector 6 and including the metadata structure, up to but not including the digest in the metadata structure. If the calculated digest mataches hte digest in hte metadata structure, it is Cortex-M4 firmware and the second-stage bootloader must then set the vector table and MSP using the appropriate addresses found at the start of the sector, and then jump to the reset handler.
+If such an application is not found in sector 6, then the second-stage bootloader must search flash memory sector 7 for a valid application in the ready-to-run state. On finding the magic number arrays, the second-stage bootloader must check whether the content of the 8-byte validation array of the metadata structure is {0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00}, and that the invalidation array of the metadata structure is {0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF}, and, if it is, calculate the SHA256 digest of the found application, starting at the beginning of sector 6 and including the metadata structure, up to but not including the digest in the metadata structure. If the calculated digest matches the digest in the metadata structure, the Cortex-M4 firmware is present, and the second-stage bootloader must then set the vector table. MSP uses the appropriate address found at the start of the sector, then jumps to the reset handler.
 
-If a valid application in the ready-to-run state is not found in sector 7, then the second-stage bootloader must attempt to download the current version using the BLE capability of the Stephano-I module attached to the MCU's UART2. Use 4-kbyte data buffers. Before using the Stephano module, assert n_STEPHANO_ON, wait 100 ms, then bounce the n_STEPHANO_RST line to reset the module. Both signals are active-low. The Stephano module should respond with 'Ready' within 3 seconds on UART2 after it has been reset.
+If a valid application in the ready-to-run state is not found in sector 7, then the second-stage bootloader must attempt to download the current version using the BLE capability of the Stephano-I module attached to the MCU's UART2. Use 4-kbyte data buffers. Before using the Stephano module, assert n_STEPHANO_ON, wait 100 ms, then bounce the n_STEPHANO_RST line to reset the module. Both signals are active-low. The Stephano module should respond with 'Ready' on UART2 within 3 seconds after reset.
 
-Issue the AT+RESTORE to the Stephano module and wait for the OK response to this and other AT commands, where appropriate. Configure the Stephano module for configured for 115200 baud, 8 data bits, 1 stop bit, no parity, and hardware flow control. Then enable RTS/CTS flow control for UART2. Configure the Stephano module for the WE SPP-like profile.
+Issue the AT+RESTORE to the Stephano module and wait for the OK response to this and other AT commands, where appropriate. Configure the Stephano module for 115200 baud, 8 data bits, 1 stop bit, no parity, and hardware flow control. Then enable RTS/CTS flow control for UART2. Configure the Stephano module for the WE SPP-like profile.
 
 Configure it for the WE SPP-like protocol. See the text file, "Cursor on Stephano Setup for WE SPP-Like Protocol", for details.
 
 Create the interface with the download server to work like this:
 
-For identification, I'll discuss exchanges between a PC acting as the download server and our second-stage bootloader which is called the Well Status Monitor (WSM).
+For identification, I'll discuss exchanges between a PC acting as the download server and our second-stage bootloader, which is called the Well Status Monitor (WSM).
+
+If the WSM has a stored WELL_ID when communications start, it sends "WSM ID {WELL_ID}" to the PC. The PC responds "OKAY" if it recognizes the WELL_ID, or "UNKNOWN" if not. On "UNKNOWN", the WSM sends its IMEI and communication proceeds as for initial contact.
+
+For initial identification (no stored WELL_ID, or PC responded UNKNOWN):
+-> WSM sends "WSM IMEI {IMEI}" to PC. {IMEI} is taken from the WSM modem via AT+CGSN.
+<- PC sends "WSM ID {WELL_ID}" to WSM. {WELL_ID} is the 16-bit ID assigned to the WSM. The WSM stores this for future use.
 
 -> WSM sends "WSM BL {BOOTLOADER_VERSION}" to PC. BOOTLOADER_VERSION is the version of the WSM second-stage bootloader, found in its own metadata structure.
 <- PC sends "WSM BL OK" to WSM if the second-stage bootloader is okay, -OR- "WSM BL {NEW_BOOTLOADER_VERSION} {SIZE}", if a new second-stage bootloader is required, along with the SIZE of NEW_BOOTLOADER_VERSION.
 
 IF A NEW SECOND_STAGE BOOTLOADER IS REQUIRED
 
-	WSM checks SIZE to see if the new code will fit in flash sector 6. If it will, the second-stage bootloader then erases flash sector 6 if it is not already erased, and the second-stage bootloader is ready; otherwiase, it is not.
+	WSM checks SIZE to see if the new code will fit in flash sector 6. If it will, the second-stage bootloader erases flash sector 6 if it is not already erased and is ready; otherwise, it is not.
 
 	-> WSM sends "BL DL READY" when it is ready to begin the download process, -OR- "BL DL ERROR" if the WSM is somehow not ready, including not having sufficient memory for the new second-stage bootloader.
 	<- PC sends "BL DATA {N} {SIZE} {DATA}" to WSM. N is a sequential packet number starting at 0, SIZE is the size of the data being sent, and DATA is the binary second-stage bootloader data.
 	
-	WSM programs the received data into flash sector 6, starting at the beginning of the sector and appending additional data packets as they are received.
+	WSM writes the received data to flash sector 6, starting at the beginning of the sector and appending additional data packets as they arrive.
 
 	-> WSM sends "BL DATA OKAY" when it has consumed the second-stage bootloader data packet and successfully programmed it into flash memory, or "BL DATA ERROR" if anything went wrong.
 
@@ -62,12 +68,12 @@ END IF A NEW BOOTLOADER IS REQUIRED
 
 IF A NEW APPLICATION IS REQUIRED
 
-	WSM checks SIZE to see if the new code will fit in flash sector 6. If it will, the second-stage bootloader then erases flash sector 6 if it is not already erased, and the second-stage bootloader is ready; otherwiase, it is not.
+	WSM checks SIZE to see if the new code will fit in flash sector 6. If it will, the second-stage bootloader erases flash sector 6 if it is not already erased and is ready; otherwise, it is not.
 
 	-> WSM sends "APP DL READY" when it is ready to begin the download process, or "APP DL ERROR" if the WSM is not ready, including not having sufficient memory for the new application.
 	<- PC sends "APP DATA {N} {SIZE} {DATA}" to WSM. N is a sequential packet number starting at 0, SIZE is the size of the data being sent, and DATA is the binary application data.
 
-	WSM programs the received data into flash sector 6, starting at the beginning of the sector and appending additional data packets as they are received.
+	WSM writes the received data to flash sector 6, starting at the beginning of the sector and appending additional data packets as they arrive.
 
 	-> WSM sends "APP DATA OKAY" when it has consumed the application data packet and successfully programmed it into flash memory, or "APP DATA ERROR" if anything went wrong.
 
@@ -81,6 +87,6 @@ ERROR HANDLING
 
 If anything goes wrong, the WSM should output a dying gasp error message to the PC and then reboot.
 The initial second-stage bootloader version should be "1.0.0".
-The dying gasp error message shold be plain ASCII text starting with "Bootloader Error!"
+The dying gasp error message should be plain ASCII text starting with "Bootloader Error!"
 Disable interrupts before jumping to the application.
-Create a post-build script and step to create well-monitor-2-bootloader_nonvalidated.srec and well-monitor-2-bootloader_validated.srec files similar to those created for the well-monitor-2 project, which is also located in C:\ST2.
+Create a post-build step to generate well-monitor-2-bootloader_nonvalidated.srec and well-monitor-2-bootloader_validated.srec files, similar to those created for the well-monitor-2 project, which is also located in C:\ST2.

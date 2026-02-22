@@ -19,6 +19,11 @@
 #define LINE_BUFFER_SIZE      128
 #define APP_VERSION_NONE      "0.0.0"
 
+/* WELL_ID storage in sector 5 (0x08020000) */
+#define WELL_ID_STORAGE_ADDR  0x08020000
+#define WELL_ID_MAGIC         0x57454C4C  /* "WELL" */
+#define FLASH_SECTOR_5        5
+
 typedef enum {
     DL_STATE_STEPHANO_POWER,
     DL_STATE_WAIT_READY,
@@ -26,6 +31,10 @@ typedef enum {
     DL_STATE_AT_CFG,
     DL_STATE_WE_SPP_SETUP,
     DL_STATE_WAIT_CONNECT,
+    DL_STATE_SEND_WSM_ID,
+    DL_STATE_WAIT_ID_RESP,
+    DL_STATE_SEND_WSM_IMEI,
+    DL_STATE_WAIT_WSM_ID,
     DL_STATE_SEND_WSM_BL,
     DL_STATE_WAIT_BL_RESP,
     DL_STATE_BL_DOWNLOAD,
@@ -48,12 +57,22 @@ static bool downloading_bootloader = false;
 
 static uint8_t uart_rx_byte;
 
+#define IMEI_BUF_SIZE 20
+static char imei_buf[IMEI_BUF_SIZE] = "000000000000000";
+static uint16_t well_id = 0;
+static bool have_stored_well_id = false;
+
 static void dying_gasp(const char *msg);
 static void Stephano_PowerOn(void);
 static void Stephano_Reset(void);
 static bool wait_for_ready(uint32_t timeout_ms);
 static void get_bootloader_version(char *buf, size_t len);
 static void get_app_version(char *buf, size_t len);
+static void get_imei_from_module(void);
+static void read_stored_well_id(void);
+static void save_well_id(uint16_t id);
+static void handle_id_response(const char *line);
+static void handle_wsm_id_response(const char *line);
 static bool parse_line(const char *line);
 static void handle_bl_response(const char *line);
 static void handle_app_response(const char *line);
@@ -140,6 +159,62 @@ static void get_app_version(char *buf, size_t len)
     }
 }
 
+/* Extract IMEI from AT+CGSN response. Response may be "+CGSN: 123...", "123...", or "+CGSN: \"123...\"" */
+static void get_imei_from_module(void)
+{
+    char resp[AT_MAX_RESPONSE_LEN];
+    if (AT_SendCommand("AT+CGSN", resp, sizeof(resp), 3000) != AT_OK) {
+        strncpy(imei_buf, "000000000000000", IMEI_BUF_SIZE - 1);
+        imei_buf[IMEI_BUF_SIZE - 1] = '\0';
+        return;
+    }
+    /* Find first digit in response */
+    const char *p = resp;
+    while (*p && !(*p >= '0' && *p <= '9')) p++;
+    size_t i = 0;
+    while (*p && (*p >= '0' && *p <= '9') && i < IMEI_BUF_SIZE - 1) {
+        imei_buf[i++] = *p++;
+    }
+    imei_buf[i] = '\0';
+    if (i == 0) {
+        strncpy(imei_buf, "000000000000000", IMEI_BUF_SIZE - 1);
+        imei_buf[IMEI_BUF_SIZE - 1] = '\0';
+    }
+}
+
+static void read_stored_well_id(void)
+{
+    uint32_t magic;
+    uint8_t buf[6];
+    Flash_ReadData(WELL_ID_STORAGE_ADDR, buf, 6);
+    magic = (uint32_t)buf[0] | ((uint32_t)buf[1] << 8) | ((uint32_t)buf[2] << 16) | ((uint32_t)buf[3] << 24);
+    if (magic == WELL_ID_MAGIC) {
+        well_id = (uint16_t)buf[4] | ((uint16_t)buf[5] << 8);
+        have_stored_well_id = true;
+    } else {
+        well_id = 0;
+        have_stored_well_id = false;
+    }
+}
+
+static void save_well_id(uint16_t id)
+{
+    uint8_t buf[8];
+    buf[0] = (uint8_t)(WELL_ID_MAGIC);
+    buf[1] = (uint8_t)(WELL_ID_MAGIC >> 8);
+    buf[2] = (uint8_t)(WELL_ID_MAGIC >> 16);
+    buf[3] = (uint8_t)(WELL_ID_MAGIC >> 24);
+    buf[4] = (uint8_t)(id);
+    buf[5] = (uint8_t)(id >> 8);
+    buf[6] = 0xFF;
+    buf[7] = 0xFF;
+    if (!Flash_EraseSector(FLASH_SECTOR_5))
+        return;
+    Flash_WriteData(WELL_ID_STORAGE_ADDR, buf, 8);
+    well_id = id;
+    have_stored_well_id = true;
+}
+
 /* Add byte to rx buffer (from UART callback). */
 void Bootloader_RxByte(uint8_t b)
 {
@@ -177,9 +252,36 @@ static void send_line(const char *s)
     HAL_UART_Transmit(STEPHANO_UART_PTR, (uint8_t *)"\r\n", 2, 500);
 }
 
+static void handle_id_response(const char *line)
+{
+    if (dl_state == DL_STATE_WAIT_ID_RESP) {
+        if (strcmp(line, "OKAY") == 0) {
+            dl_state = DL_STATE_SEND_WSM_BL;
+        } else if (strcmp(line, "UNKNOWN") == 0) {
+            dl_state = DL_STATE_SEND_WSM_IMEI;
+        }
+    }
+}
+
+static void handle_wsm_id_response(const char *line)
+{
+    if (dl_state == DL_STATE_WAIT_WSM_ID && strncmp(line, "WSM ID ", 7) == 0) {
+        unsigned int id_val;
+        if (sscanf(line + 7, "%u", &id_val) == 1 && id_val <= 0xFFFF) {
+            well_id = (uint16_t)id_val;
+            save_well_id(well_id);
+            dl_state = DL_STATE_SEND_WSM_BL;
+        }
+    }
+}
+
 static bool parse_line(const char *line)
 {
-    if (downloading_bootloader)
+    if (dl_state == DL_STATE_WAIT_ID_RESP)
+        handle_id_response(line);
+    else if (dl_state == DL_STATE_WAIT_WSM_ID)
+        handle_wsm_id_response(line);
+    else if (downloading_bootloader)
         handle_bl_response(line);
     else if (dl_state == DL_STATE_APP_DOWNLOAD)
         handle_app_response(line);
@@ -403,6 +505,9 @@ void Bootloader_StartDownload(void)
     if (AT_SendCommand("AT+UART_CUR=115200,8,1,0,1", NULL, 0, 2000) != AT_OK)
         dying_gasp("AT+UART_CUR failed");
 
+    get_imei_from_module();
+    read_stored_well_id();
+
     __HAL_UART_DISABLE(STEPHANO_UART_PTR);
     __HAL_UART_HWCONTROL_CTS_ENABLE(STEPHANO_UART_PTR);
     __HAL_UART_ENABLE(STEPHANO_UART_PTR);
@@ -443,10 +548,26 @@ void Bootloader_Download_Process(void)
             if (AT_SendCommand("AT+BLESPP", NULL, 0, 2000) != AT_OK)
                 dying_gasp("AT+BLESPP failed");
             HAL_UART_Receive_IT(STEPHANO_UART_PTR, &uart_rx_byte, 1);
-            dl_state = DL_STATE_SEND_WSM_BL;
+            dl_state = have_stored_well_id ? DL_STATE_SEND_WSM_ID : DL_STATE_SEND_WSM_IMEI;
             connect_start = 0;
         }
         process_rx_data();
+        return;
+    }
+
+    if (dl_state == DL_STATE_SEND_WSM_ID) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "WSM ID %u", (unsigned int)well_id);
+        send_line(buf);
+        dl_state = DL_STATE_WAIT_ID_RESP;
+        return;
+    }
+
+    if (dl_state == DL_STATE_SEND_WSM_IMEI) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "WSM IMEI %s", imei_buf);
+        send_line(buf);
+        dl_state = DL_STATE_WAIT_WSM_ID;
         return;
     }
 
