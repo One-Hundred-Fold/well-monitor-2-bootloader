@@ -101,6 +101,9 @@ static void jump_to_application(uint32_t app_addr)
     ((void (*)(void))reset_handler)();
 }
 
+/* Only start the BLE download sequence once per boot; main loop then drives Bootloader_Download_Process(). */
+static bool download_started;
+
 void Bootloader_Run(void)
 {
     const uint8_t *meta;
@@ -143,6 +146,10 @@ void Bootloader_Run(void)
         }
     }
 
-    /* 3. No valid app found; start BLE download (never returns on success) */
+    /* 3. No valid app found; start BLE download once, then rely on main loop calling Bootloader_Download_Process() */
+    if (download_started) {
+        return;
+    }
+    download_started = true;
     Bootloader_StartDownload();
 }

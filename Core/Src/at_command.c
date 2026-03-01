@@ -12,6 +12,10 @@
 #include <string.h>
 #include <stdio.h>
 
+#define BOOTLOADER_DEBUG_ENABLE 1
+#include "stm32f4xx_hal_uart.h"
+extern UART_HandleTypeDef huart1;
+
 /* STEPHANO_UART_PTR from main.h */
 
 static char at_response_buffer[AT_MAX_RESPONSE_LEN];
@@ -25,61 +29,63 @@ at_status_t AT_SendCommand(const char* command, char* response, uint16_t respons
     uint8_t cmd_with_crlf[256];
     uint16_t cmd_len;
     HAL_StatusTypeDef status;
-    uint32_t start_tick;
-    uint16_t received_bytes = 0;
-    
+    uint16_t request_size;
+    uint16_t received_bytes;
+
     if (command == NULL) return AT_ERROR;
-    
-    // Prepare command with CRLF
+
     cmd_len = strlen(command);
     if (cmd_len > 250) return AT_ERROR;
-    
+
     memcpy(cmd_with_crlf, command, cmd_len);
     cmd_with_crlf[cmd_len++] = '\r';
     cmd_with_crlf[cmd_len++] = '\n';
-    
-    // Clear response buffer
+
     memset(at_response_buffer, 0, sizeof(at_response_buffer));
     at_response_len = 0;
-    
-    // Note: Interrupt-based receive is active, but for AT commands we use blocking receive
-    // This will temporarily override the interrupt receive
-    
-    // Send command
+
+    (void)HAL_UART_AbortReceive_IT(STEPHANO_UART_PTR);
+
+    {
+        uint8_t discard;
+        uint32_t flush_end = HAL_GetTick() + 50;
+        while (HAL_GetTick() < flush_end) {
+            if (HAL_UART_Receive(STEPHANO_UART_PTR, &discard, 1, 5) != HAL_OK)
+                break;
+        }
+    }
+
+#if BOOTLOADER_DEBUG_ENABLE
+  {
+      char dbg_msg[128];
+      int len = sprintf(dbg_msg, "%s send ", __FUNCTION__);
+      HAL_UART_Transmit(&huart1, (uint8_t*) dbg_msg, len, 1000);
+      HAL_UART_Transmit(&huart1, cmd_with_crlf, cmd_len, 1000);
+  }
+#endif
+
     status = HAL_UART_Transmit(STEPHANO_UART_PTR, cmd_with_crlf, cmd_len, timeout_ms);
     if (status != HAL_OK) {
         return AT_ERROR;
     }
-    
-    // Wait for response - read bytes until we get CRLF or timeout
-    start_tick = HAL_GetTick();
-    received_bytes = 0;
-    
-    while ((HAL_GetTick() - start_tick) < timeout_ms) {
-        uint8_t byte;
-        status = HAL_UART_Receive(STEPHANO_UART_PTR, &byte, 1, 100);
-        
-        if (status == HAL_OK) {
-            if (received_bytes < (AT_MAX_RESPONSE_LEN - 1)) {
-                at_response_buffer[received_bytes++] = byte;
-                
-                // Check for CRLF (end of response)
-                if (received_bytes >= 2 && 
-                    at_response_buffer[received_bytes - 2] == '\r' &&
-                    at_response_buffer[received_bytes - 1] == '\n') {
-                    break;
-                }
-            } else {
-                break;  // Buffer full
-            }
-        }
-    }
-    
+
+    /* Allow timeout_ms for echo, processing, and response (all with line termination) */
+    request_size = (uint16_t)(AT_MAX_RESPONSE_LEN - 1);
+    status = HAL_UART_Receive(STEPHANO_UART_PTR, (uint8_t *)at_response_buffer, request_size, timeout_ms);
+    received_bytes = request_size - STEPHANO_UART_PTR->RxXferCount;
     at_response_buffer[received_bytes] = '\0';
     at_response_len = received_bytes;
     
     // Note: Interrupt-based receive is stopped during AT commands to avoid conflicts
     // It will be restarted by firmware_update module after AT commands complete
+#if BOOTLOADER_DEBUG_ENABLE
+  {
+      char dbg_msg[128];
+      int len = sprintf(dbg_msg, "%s recv ", __FUNCTION__);
+      HAL_UART_Transmit(&huart1, (uint8_t*) dbg_msg, len, 1000);
+      HAL_UART_Transmit(&huart1, (uint8_t*) at_response_buffer, at_response_len, 1000);
+  }
+#endif
     
     // Copy response if buffer provided
     if (response != NULL && response_len > 0 && at_response_len > 0) {

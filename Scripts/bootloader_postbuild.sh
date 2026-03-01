@@ -14,7 +14,7 @@
 #   [8..15]  inverted magic
 #   [16..23] name (8-byte, "WSM_BL")
 #   [24..31] version (8-byte, "1.0.0")
-#   [32..35] dest_address (LE) - sector 4 = 0x08010000
+#   [32..35] dest_address (LE) - sector 4 = 0x08000000
 #   [36..39] size (LE) - bootloader size including metadata
 #   [40..47] validation   <- 0xffffffff00000000 (validated) or 0xffffffffffffffff (nonvalidated)
 #   [48..55] invalidation
@@ -42,7 +42,7 @@ SREC_VALIDATED="${DIR}/${BASE}_validated.srec"
 DIGEST_BIN="${DIR}/${BASE}_digest.bin"
 
 # Flash base for sector 4 (bootloader; must match linker script)
-FLASH_BASE=0x08010000
+FLASH_BASE=0x08000000
 
 # Metadata: 88 bytes at end
 METADATA_SIZE=88

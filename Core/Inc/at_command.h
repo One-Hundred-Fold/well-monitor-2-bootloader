@@ -20,7 +20,7 @@ extern "C" {
 #include <stdbool.h>
 
 /* Exported constants --------------------------------------------------------*/
-#define AT_RESPONSE_TIMEOUT_MS       5000
+#define AT_RESPONSE_TIMEOUT_MS       10000
 #define AT_MAX_RESPONSE_LEN          256
 
 /* Exported types ------------------------------------------------------------*/

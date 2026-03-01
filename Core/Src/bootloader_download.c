@@ -15,14 +15,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define BOOTLOADER_DEBUG_ENABLE 1
+
 #define DOWNLOAD_BUFFER_SIZE  4096
 #define LINE_BUFFER_SIZE      128
 #define APP_VERSION_NONE      "0.0.0"
 
-/* WELL_ID storage in sector 5 (0x08020000) */
-#define WELL_ID_STORAGE_ADDR  0x08020000
+/* WELL_ID storage in sector 1 (0x08004000) */
+#define STORED_PARAMS_FLASH_SECTOR FLASH_SECTOR_3
+#define WELL_ID_STORAGE_ADDR  0x0800C000
 #define WELL_ID_MAGIC         0x57454C4C  /* "WELL" */
-#define FLASH_SECTOR_5        5
+
+#include "stm32f4xx_hal_uart.h"
+extern UART_HandleTypeDef huart1;
 
 typedef enum {
     DL_STATE_STEPHANO_POWER,
@@ -33,7 +38,7 @@ typedef enum {
     DL_STATE_WAIT_CONNECT,
     DL_STATE_SEND_WSM_ID,
     DL_STATE_WAIT_ID_RESP,
-    DL_STATE_SEND_WSM_IMEI,
+    DL_STATE_SEND_WSM_MAC,
     DL_STATE_WAIT_WSM_ID,
     DL_STATE_SEND_WSM_BL,
     DL_STATE_WAIT_BL_RESP,
@@ -57,8 +62,8 @@ static bool downloading_bootloader = false;
 
 static uint8_t uart_rx_byte;
 
-#define IMEI_BUF_SIZE 20
-static char imei_buf[IMEI_BUF_SIZE] = "000000000000000";
+#define MAC_BUF_SIZE 20
+static char mac_buf[MAC_BUF_SIZE] = "00:00:00:00:00:00";
 static uint16_t well_id = 0;
 static bool have_stored_well_id = false;
 
@@ -68,7 +73,7 @@ static void Stephano_Reset(void);
 static bool wait_for_ready(uint32_t timeout_ms);
 static void get_bootloader_version(char *buf, size_t len);
 static void get_app_version(char *buf, size_t len);
-static void get_imei_from_module(void);
+static void get_mac_from_module(void);
 static void read_stored_well_id(void);
 static void save_well_id(uint16_t id);
 static void handle_id_response(const char *line);
@@ -82,6 +87,15 @@ static void dying_gasp(const char *msg)
 {
     char buf[128];
     size_t n = snprintf(buf, sizeof(buf), "Bootloader Error! %s\r\n", msg ? msg : "Unknown");
+
+#if BOOTLOADER_DEBUG_ENABLE
+  {
+	char dbg_msg[128];
+	int len = sprintf(dbg_msg, "%s->%s\r\n", __FUNCTION__, msg);
+    HAL_UART_Transmit(&huart1, (uint8_t*) dbg_msg, len, 100);
+  }
+#endif
+
     HAL_UART_Transmit(STEPHANO_UART_PTR, (uint8_t *)buf, (uint16_t)n, 1000);
     HAL_Delay(100);
     __disable_irq();
@@ -91,34 +105,40 @@ static void dying_gasp(const char *msg)
 static void Stephano_PowerOn(void)
 {
     HAL_GPIO_WritePin(n_STEPHANO_ON_GPIO_Port, n_STEPHANO_ON_Pin, GPIO_PIN_RESET);
-    HAL_Delay(100);
+    HAL_Delay(500);
+}
+
+static void Stephano_PowerOff(void)
+{
+    HAL_GPIO_WritePin(n_STEPHANO_ON_GPIO_Port, n_STEPHANO_ON_Pin, GPIO_PIN_SET);
+    HAL_Delay(500);
 }
 
 static void Stephano_Reset(void)
 {
     HAL_GPIO_WritePin(n_STEPHANO_RST_GPIO_Port, n_STEPHANO_RST_Pin, GPIO_PIN_RESET);
-    HAL_Delay(100);
+    HAL_Delay(500);
     HAL_GPIO_WritePin(n_STEPHANO_RST_GPIO_Port, n_STEPHANO_RST_Pin, GPIO_PIN_SET);
-    HAL_Delay(100);
 }
 
 static bool wait_for_ready(uint32_t timeout_ms)
 {
-    uint32_t start = HAL_GetTick();
-    char buf[32];
-    uint16_t bi = 0;
+    uint8_t buf[40];
+    memset(buf, 0, 40);
 
-    while ((HAL_GetTick() - start) < timeout_ms) {
-        uint8_t b;
-        if (HAL_UART_Receive(STEPHANO_UART_PTR, &b, 1, 50) == HAL_OK) {
-            if (bi < sizeof(buf) - 1) {
-                buf[bi++] = (char)b;
-                buf[bi] = '\0';
-                if (strstr(buf, "Ready") != NULL)
-                    return true;
-            }
-        }
+    for (int attempt = 0; attempt < 10; ++ attempt)
+    {
+    	HAL_UART_Receive(STEPHANO_UART_PTR, buf, 7, timeout_ms);
+#if BOOTLOADER_DEBUG_ENABLE
+    	{
+    		char dbg_msg[128];
+    		int len = snprintf(dbg_msg, sizeof(dbg_msg), "%s -> '%s'\r\n", __FUNCTION__, (char*) buf);
+    		HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+    	}
+#endif
+    	if (strstr((char*) buf, "ready") != NULL) return true;
     }
+
     return false;
 }
 
@@ -159,26 +179,26 @@ static void get_app_version(char *buf, size_t len)
     }
 }
 
-/* Extract IMEI from AT+CGSN response. Response may be "+CGSN: 123...", "123...", or "+CGSN: \"123...\"" */
-static void get_imei_from_module(void)
+/* Extract MAC from AT+CIPSTAMAC? response.*/
+static void get_mac_from_module(void)
 {
     char resp[AT_MAX_RESPONSE_LEN];
-    if (AT_SendCommand("AT+CGSN", resp, sizeof(resp), 3000) != AT_OK) {
-        strncpy(imei_buf, "000000000000000", IMEI_BUF_SIZE - 1);
-        imei_buf[IMEI_BUF_SIZE - 1] = '\0';
+    if (AT_SendCommand("AT+CIPSTAMAC?", resp, sizeof(resp), 3000) != AT_OK) {
+        strncpy(mac_buf, "00:00:00:00:00:00", MAC_BUF_SIZE - 1);
+        mac_buf[MAC_BUF_SIZE - 1] = '\0';
         return;
     }
-    /* Find first digit in response */
+    // Find first digit in response
     const char *p = resp;
     while (*p && !(*p >= '0' && *p <= '9')) p++;
     size_t i = 0;
-    while (*p && (*p >= '0' && *p <= '9') && i < IMEI_BUF_SIZE - 1) {
-        imei_buf[i++] = *p++;
+    while (*p && ((*p >= '0' && *p <= '9') || (*p == ':')) && i < MAC_BUF_SIZE - 1) {
+        mac_buf[i++] = *p++;
     }
-    imei_buf[i] = '\0';
+    mac_buf[i] = '\0';
     if (i == 0) {
-        strncpy(imei_buf, "000000000000000", IMEI_BUF_SIZE - 1);
-        imei_buf[IMEI_BUF_SIZE - 1] = '\0';
+        strncpy(mac_buf, "00:00:00:00:00:00", MAC_BUF_SIZE - 1);
+        mac_buf[MAC_BUF_SIZE - 1] = '\0';
     }
 }
 
@@ -208,7 +228,7 @@ static void save_well_id(uint16_t id)
     buf[5] = (uint8_t)(id >> 8);
     buf[6] = 0xFF;
     buf[7] = 0xFF;
-    if (!Flash_EraseSector(FLASH_SECTOR_5))
+    if (!Flash_EraseSector(STORED_PARAMS_FLASH_SECTOR))
         return;
     Flash_WriteData(WELL_ID_STORAGE_ADDR, buf, 8);
     well_id = id;
@@ -258,7 +278,7 @@ static void handle_id_response(const char *line)
         if (strcmp(line, "OKAY") == 0) {
             dl_state = DL_STATE_SEND_WSM_BL;
         } else if (strcmp(line, "UNKNOWN") == 0) {
-            dl_state = DL_STATE_SEND_WSM_IMEI;
+            dl_state = DL_STATE_SEND_WSM_MAC;
         }
     }
 }
@@ -475,6 +495,14 @@ void Bootloader_StartDownload(void)
     pending_payload_received = 0;
     dl_state = DL_STATE_STEPHANO_POWER;
 
+#if BOOTLOADER_DEBUG_ENABLE
+  {
+    char dbg_msg[128];
+    int len = sprintf(dbg_msg, "%s begin\r\n", __FUNCTION__);
+    HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+  }
+#endif
+
     /* Drive CTS low before talking to Stephano */
     GPIO_InitStruct.Pin = STEPHANO_CTS_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -487,15 +515,38 @@ void Bootloader_StartDownload(void)
     GPIO_InitStruct.Alternate = GPIO_AF7_USART2;
     HAL_GPIO_Init(STEPHANO_CTS_GPIO_Port, &GPIO_InitStruct);
 
-    Stephano_PowerOn();
+#if BOOTLOADER_DEBUG_ENABLE
+  {
+    char dbg_msg[128];
+    int len = sprintf(dbg_msg, "%s Stephano_PowerOn\r\n", __FUNCTION__);
+    HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+  }
+#endif
+  Stephano_PowerOff();
+  Stephano_PowerOn();
+
+#if BOOTLOADER_DEBUG_ENABLE
+  {
+    char dbg_msg[128];
+    int len = sprintf(dbg_msg, "%s Stephano_Reset\r\n", __FUNCTION__);
+    HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+  }
+#endif
     Stephano_Reset();
-    HAL_Delay(200);
 
     __HAL_UART_DISABLE(STEPHANO_UART_PTR);
     __HAL_UART_HWCONTROL_CTS_DISABLE(STEPHANO_UART_PTR);
     __HAL_UART_ENABLE(STEPHANO_UART_PTR);
 
-    if (!wait_for_ready(3000))
+#if BOOTLOADER_DEBUG_ENABLE
+  {
+    char dbg_msg[128];
+    int len = sprintf(dbg_msg, "%s wait_for_ready\r\n", __FUNCTION__);
+    HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+  }
+#endif
+
+    if (!wait_for_ready(10000))
         dying_gasp("Stephano Ready timeout");
 
     if (AT_SendCommand("AT+RESTORE", NULL, 0, 5000) != AT_OK)
@@ -505,19 +556,40 @@ void Bootloader_StartDownload(void)
     if (AT_SendCommand("AT+UART_CUR=115200,8,1,0,1", NULL, 0, 2000) != AT_OK)
         dying_gasp("AT+UART_CUR failed");
 
-    get_imei_from_module();
+    get_mac_from_module();
     read_stored_well_id();
 
+#if BOOTLOADER_USE_HARDWARE_FLOW_CONTROL
     __HAL_UART_DISABLE(STEPHANO_UART_PTR);
     __HAL_UART_HWCONTROL_CTS_ENABLE(STEPHANO_UART_PTR);
     __HAL_UART_ENABLE(STEPHANO_UART_PTR);
+#endif
 
     if (AT_SendCommand("AT+BLEINIT=2", NULL, 0, 2000) != AT_OK)
         dying_gasp("AT+BLEINIT=2 failed");
-    if (AT_SendCommand("AT+BLENAME=\"Stephano_Device\"", NULL, 0, 2000) != AT_OK)
-        dying_gasp("AT+BLENAME failed");
+
+    if (AT_SendCommand("AT+BLEGATTSSRVCRE", NULL, 0, 2000) != AT_OK)
+        dying_gasp("AT+BLEGATTSSRVCRE failed");
+
+    if (AT_SendCommand("AT+BLEGATTSSRVSTART", NULL, 0, 2000) != AT_OK)
+        dying_gasp("AT+BLEGATTSSRVSTART failed");
+
+    if (AT_SendCommand("AT+BLENAME=\"Stephano-I\"", NULL, 0, 2000) != AT_OK)
+        dying_gasp("AT+BLENAME=\"Stephano-I\" failed");
+
+    if (AT_SendCommand("AT+BLEADVDATA=\"0201060B095374657068616E6F2D49\"", NULL, 0, 2000) != AT_OK)
+        dying_gasp("AT+BLEADVDATA=\"0201060B095374657068616E6F2D49\" failed");
+
     if (AT_SendCommand("AT+BLEADVSTART", NULL, 0, 2000) != AT_OK)
         dying_gasp("AT+BLEADVSTART failed");
+
+#if BOOTLOADER_DEBUG_ENABLE
+  {
+    char dbg_msg[128];
+    int len = sprintf(dbg_msg, "%s Wait for BLE connection; then enter SPP mode\r\n", __FUNCTION__);
+    HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+  }
+#endif
 
     /* Wait for BLE connection; then enter SPP mode */
     dl_state = DL_STATE_WAIT_CONNECT;
@@ -539,16 +611,25 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 void Bootloader_Download_Process(void)
 {
+
+#if BOOTLOADER_DEBUG_ENABLE
+  {
+    char dbg_msg[128];
+    int len = sprintf(dbg_msg, "%s begin\r\n", __FUNCTION__);
+    HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+  }
+#endif
+
     if (dl_state == DL_STATE_WAIT_CONNECT) {
         static uint32_t connect_start = 0;
         if (connect_start == 0) connect_start = HAL_GetTick();
-        if ((HAL_GetTick() - connect_start) > 10000) {
+        if ((HAL_GetTick() - connect_start) > 600000) {				// THIS IS THE CONNECTION WAIT TIME
             /* Proceed to SPP mode; user should be connected */
             HAL_UART_AbortReceive_IT(STEPHANO_UART_PTR);
             if (AT_SendCommand("AT+BLESPP", NULL, 0, 2000) != AT_OK)
                 dying_gasp("AT+BLESPP failed");
             HAL_UART_Receive_IT(STEPHANO_UART_PTR, &uart_rx_byte, 1);
-            dl_state = have_stored_well_id ? DL_STATE_SEND_WSM_ID : DL_STATE_SEND_WSM_IMEI;
+            dl_state = have_stored_well_id ? DL_STATE_SEND_WSM_ID : DL_STATE_SEND_WSM_MAC;
             connect_start = 0;
         }
         process_rx_data();
@@ -563,9 +644,9 @@ void Bootloader_Download_Process(void)
         return;
     }
 
-    if (dl_state == DL_STATE_SEND_WSM_IMEI) {
+    if (dl_state == DL_STATE_SEND_WSM_MAC) {
         char buf[64];
-        snprintf(buf, sizeof(buf), "WSM IMEI %s", imei_buf);
+        snprintf(buf, sizeof(buf), "WSM MAC %s", mac_buf);
         send_line(buf);
         dl_state = DL_STATE_WAIT_WSM_ID;
         return;

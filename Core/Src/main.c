@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
 #include "bootloader_logic.h"
 #include "bootloader_download.h"
 /* USER CODE END Includes */
@@ -32,7 +33,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define BOOTLOADER_DEBUG_ENABLE 1
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -94,9 +95,6 @@ int main(void)
   MX_USART2_UART_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  
-  /* Run second-stage bootloader: sector 6/7 search, jump, or BLE download */
-  Bootloader_Run();
 
   /* USER CODE END 2 */
 
@@ -107,6 +105,24 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+#if BOOTLOADER_DEBUG_ENABLE
+  {
+    char dbg_msg[128];
+    int len = sprintf(dbg_msg, "Calling Bootloader_Run\r\n");
+    HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+  }
+#endif
+
+  /* Run second-stage bootloader: sector 6/7 search, jump, or BLE download */
+  Bootloader_Run();
+
+#if BOOTLOADER_DEBUG_ENABLE
+  {
+    char dbg_msg[128];
+    int len = sprintf(dbg_msg, "Calling Bootloader_Download_Process\r\n");
+    HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+  }
+#endif
     Bootloader_Download_Process();
     HAL_Delay(10);
   }
@@ -179,7 +195,7 @@ static void MX_USART1_UART_Init(void)
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
   huart1.Init.Mode = UART_MODE_TX_RX;
-  huart1.Init.HwFlowCtl = UART_HWCONTROL_RTS_CTS;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE /* UART_HWCONTROL_RTS_CTS */;
   huart1.Init.OverSampling = UART_OVERSAMPLING_16;
   if (HAL_UART_Init(&huart1) != HAL_OK)
   {
@@ -212,7 +228,7 @@ static void MX_USART2_UART_Init(void)
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;
   huart2.Init.Mode = UART_MODE_TX_RX;
-  huart2.Init.HwFlowCtl = UART_HWCONTROL_RTS_CTS;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE /* UART_HWCONTROL_RTS_CTS */;
   huart2.Init.OverSampling = UART_OVERSAMPLING_16;
   if (HAL_UART_Init(&huart2) != HAL_OK)
   {

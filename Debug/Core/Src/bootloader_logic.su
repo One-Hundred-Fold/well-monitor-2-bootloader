@@ -7,4 +7,4 @@
 ../Core/Src/bootloader_logic.c:70:13:verify_sha256_sector7_ready	64	static
 ../Core/Src/bootloader_logic.c:80:23:search_sector_metadata	24	static
 ../Core/Src/bootloader_logic.c:94:13:jump_to_application	32	static,ignoring_inline_asm
-../Core/Src/bootloader_logic.c:104:6:Bootloader_Run	40	static
+../Core/Src/bootloader_logic.c:107:6:Bootloader_Run	40	static
