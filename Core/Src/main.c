@@ -80,7 +80,8 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
+  /* Enable interrupts - BootOnlyBootloader disables them before jumping here */
+  __enable_irq();
   /* USER CODE END Init */
 
   /* Configure the system clock */

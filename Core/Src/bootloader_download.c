@@ -486,8 +486,6 @@ static void process_rx_data(void)
 
 void Bootloader_StartDownload(void)
 {
-    GPIO_InitTypeDef GPIO_InitStruct = {0};
-
     rx_head = 0;
     rx_count = 0;
     line_len = 0;
@@ -504,6 +502,9 @@ void Bootloader_StartDownload(void)
 #endif
 
     /* Drive CTS low before talking to Stephano */
+/*
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+
     GPIO_InitStruct.Pin = STEPHANO_CTS_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -514,15 +515,24 @@ void Bootloader_StartDownload(void)
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Alternate = GPIO_AF7_USART2;
     HAL_GPIO_Init(STEPHANO_CTS_GPIO_Port, &GPIO_InitStruct);
+*/
 
 #if BOOTLOADER_DEBUG_ENABLE
+  {
+    char dbg_msg[128];
+    int len = sprintf(dbg_msg, "%s Stephano_PowerOff\r\n", __FUNCTION__);
+    HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+  }
+#endif
+  Stephano_PowerOff();
+
+  #if BOOTLOADER_DEBUG_ENABLE
   {
     char dbg_msg[128];
     int len = sprintf(dbg_msg, "%s Stephano_PowerOn\r\n", __FUNCTION__);
     HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
   }
 #endif
-  Stephano_PowerOff();
   Stephano_PowerOn();
 
 #if BOOTLOADER_DEBUG_ENABLE

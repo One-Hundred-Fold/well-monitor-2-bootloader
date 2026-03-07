@@ -1,8 +1,8 @@
 ../Core/Src/at_command.c:27:13:AT_SendCommand	13
 ../Core/Src/at_command.c:108:13:AT_Test	1
 ../Core/Src/at_command.c:113:13:AT_Reset	1
-../Core/Src/at_command.c:118:13:AT_ConfigureFlowControl	2
-../Core/Src/at_command.c:134:13:AT_EnableBLE	2
-../Core/Src/at_command.c:148:13:AT_ConnectBLE	2
+../Core/Src/at_command.c:118:13:AT_ConfigureFlowControl	1
+../Core/Src/at_command.c:134:13:AT_EnableBLE	1
+../Core/Src/at_command.c:148:13:AT_ConnectBLE	1
 ../Core/Src/at_command.c:163:13:AT_DisconnectBLE	1
 ../Core/Src/at_command.c:169:13:AT_FactoryReset	1

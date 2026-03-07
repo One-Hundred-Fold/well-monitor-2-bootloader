@@ -42,7 +42,9 @@ SREC_VALIDATED="${DIR}/${BASE}_validated.srec"
 DIGEST_BIN="${DIR}/${BASE}_digest.bin"
 
 # Flash base for sector 4 (bootloader; must match linker script)
-FLASH_BASE=0x08000000
+FLASH_BASE=0x08010000
+# Flash base for sector 6 (where first-stage bootloader will find nonvalidated image)
+FLASH_BASE_NONVALIDATED=0x08040000
 
 # Metadata: 88 bytes at end
 METADATA_SIZE=88
@@ -119,8 +121,9 @@ printf '\377\377\377\377\000\000\000\000' | dd of="$BIN" bs=1 seek=$VALIDATION_S
 arm-none-eabi-objcopy -I binary -O srec --change-section-address .data=$FLASH_BASE "$BIN" "$SREC_VALIDATED"
 
 # 6) Set validation to 0xffffffffffffffff (download) and create _nonvalidated.srec
+#     Located at sector 6 (0x08040000) where first-stage bootloader will find it
 printf '\377\377\377\377\377\377\377\377' | dd of="$BIN" bs=1 seek=$VALIDATION_SEEK conv=notrunc status=none 2>/dev/null || \
   printf '\377\377\377\377\377\377\377\377' | dd of="$BIN" bs=1 seek=$VALIDATION_SEEK conv=notrunc
-arm-none-eabi-objcopy -I binary -O srec --change-section-address .data=$FLASH_BASE "$BIN" "$SREC"
+arm-none-eabi-objcopy -I binary -O srec --change-section-address .data=$FLASH_BASE_NONVALIDATED "$BIN" "$SREC"
 
 echo "Created: $SREC_VALIDATED, $SREC (from $BIN, size $SIZE bytes)"
