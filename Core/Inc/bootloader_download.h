@@ -18,7 +18,7 @@ extern "C" {
 
 /* Start BLE download. Powers on Stephano, configures WE SPP-like, runs protocol.
    Never returns on success (reboots or jumps). On fatal error, sends dying gasp and reboots. */
-void Bootloader_StartDownload(void);
+void Bootloader_ConnectToServer(void);
 
 /* Process received data (call from main loop). */
 void Bootloader_Download_Process(void);

@@ -36,6 +36,7 @@ typedef enum {
     DL_STATE_AT_CFG,
     DL_STATE_WE_SPP_SETUP,
     DL_STATE_WAIT_CONNECT,
+	DL_STATE_CONNECTED,
     DL_STATE_SEND_WSM_ID,
     DL_STATE_WAIT_ID_RESP,
     DL_STATE_SEND_WSM_MAC,
@@ -179,20 +180,26 @@ static void get_app_version(char *buf, size_t len)
     }
 }
 
-/* Extract MAC from AT+CIPSTAMAC? response.*/
+/* Extract MAC from AT+BLEADDR? response (Stephano-I BLE address). */
 static void get_mac_from_module(void)
 {
     char resp[AT_MAX_RESPONSE_LEN];
-    if (AT_SendCommand("AT+CIPSTAMAC?", resp, sizeof(resp), 3000) != AT_OK) {
+    if (AT_SendCommand("AT+BLEADDR?", resp, sizeof(resp), 3000, true) != AT_OK) {
         strncpy(mac_buf, "00:00:00:00:00:00", MAC_BUF_SIZE - 1);
         mac_buf[MAC_BUF_SIZE - 1] = '\0';
         return;
     }
-    // Find first digit in response
-    const char *p = resp;
-    while (*p && !(*p >= '0' && *p <= '9')) p++;
+    /* +BLEADDR:xx:xx:xx:xx:xx:xx or +BLEADDR:"xx:xx:xx:xx:xx:xx" */
+    const char *p = strstr(resp, "+BLEADDR:");
+    if (p != NULL) {
+        p += 9; /* skip "+BLEADDR:" */
+        if (*p == '"') p++; /* skip optional quote */
+    } else {
+        p = resp;
+    }
+    while (*p && !((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F'))) p++;
     size_t i = 0;
-    while (*p && ((*p >= '0' && *p <= '9') || (*p == ':')) && i < MAC_BUF_SIZE - 1) {
+    while (*p && ((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F') || (*p == ':')) && i < MAC_BUF_SIZE - 1) {
         mac_buf[i++] = *p++;
     }
     mac_buf[i] = '\0';
@@ -272,6 +279,30 @@ static void send_line(const char *s)
     HAL_UART_Transmit(STEPHANO_UART_PTR, (uint8_t *)"\r\n", 2, 500);
 }
 
+/* When remote connects, Stephano sends +BLECONN URC. Respond with AT+BLECONN:0,<MAC>,
+   then AT+BLESPPCFG and AT+BLESPP per StephanoI_ATcommands.pdf page 5 steps 6-11. */
+static void handle_ble_conn_urc(const char *line)
+{
+    if (dl_state != DL_STATE_WAIT_CONNECT || strstr(line, "+BLECONN") == NULL)
+        return;
+
+    HAL_UART_AbortReceive_IT(STEPHANO_UART_PTR);
+
+    char bleconn_cmd[64];
+    snprintf(bleconn_cmd, sizeof(bleconn_cmd), "AT+BLECONN:0,%s", mac_buf);
+    if (AT_SendCommand(bleconn_cmd, NULL, 0, 2000, true) != AT_OK)
+        dying_gasp("AT+BLECONN failed");
+
+    if (AT_SendCommand("AT+BLESPPCFG=1,1,2,1,1,0", NULL, 0, 2000, true) != AT_OK)
+        dying_gasp("AT+BLESPPCFG failed");
+
+    if (AT_SendCommand("AT+BLESPP", NULL, 0, 2000, true) != AT_OK)
+        dying_gasp("AT+BLESPP failed");
+
+    HAL_UART_Receive_IT(STEPHANO_UART_PTR, &uart_rx_byte, 1);
+    dl_state = have_stored_well_id ? DL_STATE_SEND_WSM_ID : DL_STATE_SEND_WSM_MAC;
+}
+
 static void handle_id_response(const char *line)
 {
     if (dl_state == DL_STATE_WAIT_ID_RESP) {
@@ -297,6 +328,10 @@ static void handle_wsm_id_response(const char *line)
 
 static bool parse_line(const char *line)
 {
+    if (dl_state == DL_STATE_WAIT_CONNECT) {
+        handle_ble_conn_urc(line);
+        return true;
+    }
     if (dl_state == DL_STATE_WAIT_ID_RESP)
         handle_id_response(line);
     else if (dl_state == DL_STATE_WAIT_WSM_ID)
@@ -484,8 +519,9 @@ static void process_rx_data(void)
     }
 }
 
-void Bootloader_StartDownload(void)
+void Bootloader_ConnectToServer(void)
 {
+	char response_bufr[AT_MAX_RESPONSE_LEN] = { 0 };
     rx_head = 0;
     rx_count = 0;
     line_len = 0;
@@ -559,14 +595,12 @@ void Bootloader_StartDownload(void)
     if (!wait_for_ready(10000))
         dying_gasp("Stephano Ready timeout");
 
-    if (AT_SendCommand("AT+RESTORE", NULL, 0, 5000) != AT_OK)
+    if (AT_SendCommand("AT+RESTORE", NULL, 0, 1000, true) != AT_OK)
         dying_gasp("AT+RESTORE failed");
-    HAL_Delay(500);
 
-    if (AT_SendCommand("AT+UART_CUR=115200,8,1,0,1", NULL, 0, 2000) != AT_OK)
+    if (AT_SendCommand("AT+UART_CUR=115200,8,1,0,1", NULL, 0, 1000, true) != AT_OK)
         dying_gasp("AT+UART_CUR failed");
 
-    get_mac_from_module();
     read_stored_well_id();
 
 #if BOOTLOADER_USE_HARDWARE_FLOW_CONTROL
@@ -575,34 +609,61 @@ void Bootloader_StartDownload(void)
     __HAL_UART_ENABLE(STEPHANO_UART_PTR);
 #endif
 
-    if (AT_SendCommand("AT+BLEINIT=2", NULL, 0, 2000) != AT_OK)
+    if (AT_SendCommand("AT+BLEINIT=2", NULL, 0, 1000, true) != AT_OK)
         dying_gasp("AT+BLEINIT=2 failed");
 
-    if (AT_SendCommand("AT+BLEGATTSSRVCRE", NULL, 0, 2000) != AT_OK)
+    /* Get Stephano-I BLE MAC address for AT+BLECONN response when remote connects. */
+    get_mac_from_module();
+
+    if (AT_SendCommand("AT+BLEGATTSSRVCRE", NULL, 0, 1000, true) != AT_OK)
         dying_gasp("AT+BLEGATTSSRVCRE failed");
 
-    if (AT_SendCommand("AT+BLEGATTSSRVSTART", NULL, 0, 2000) != AT_OK)
+/*
+     Configure the SPP Parameters
+    if (AT_SendCommand("AT+BLESPPCFG=1,1,3,1,3", NULL, 0, 2000, true) != AT_OK)
+        dying_gasp("AT+BLEGATTSSRVCRE failed");
+     Entry 1: <srv_index>, <gzip_en>, <tx_char_index>, <rx_char_index>
+     Note: The exact indices depend on the internal GATT table.
+       On Stephano-I, 1,1,3,1,3 is the standard for the built-in SAPP profile
+*/
+
+    if (AT_SendCommand("AT+BLEGATTSSRVSTART", NULL, 0, 1000, true) != AT_OK)
         dying_gasp("AT+BLEGATTSSRVSTART failed");
 
-    if (AT_SendCommand("AT+BLENAME=\"Stephano-I\"", NULL, 0, 2000) != AT_OK)
+    if (AT_SendCommand("AT+BLENAME=\"Stephano-I\"", NULL, 0, 1000, true) != AT_OK)
         dying_gasp("AT+BLENAME=\"Stephano-I\" failed");
 
-    if (AT_SendCommand("AT+BLEADVDATA=\"0201060B095374657068616E6F2D49\"", NULL, 0, 2000) != AT_OK)
+    if (AT_SendCommand("AT+BLEADVDATA=\"0201060B095374657068616E6F2D49\"", NULL, 0, 1000, true) != AT_OK)
         dying_gasp("AT+BLEADVDATA=\"0201060B095374657068616E6F2D49\" failed");
 
-    if (AT_SendCommand("AT+BLEADVSTART", NULL, 0, 2000) != AT_OK)
+    if (AT_SendCommand("AT+BLEADVSTART", response_bufr, sizeof(response_bufr) - 1, 10000, true) != AT_OK)
         dying_gasp("AT+BLEADVSTART failed");
 
+    /* Wait up to 60 seconds for +BLECONN:0,"<MAC>" from Stephano on UART2.
+       Receive bytes via blocking HAL_UART_Receive; build line buffer until \n. */
+    dl_state = DL_STATE_WAIT_CONNECT;
+    {
 #if BOOTLOADER_DEBUG_ENABLE
-  {
-    char dbg_msg[128];
-    int len = sprintf(dbg_msg, "%s Wait for BLE connection; then enter SPP mode\r\n", __FUNCTION__);
-    HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
-  }
+		{
+			char dbg_msg[128];
+			int len = sprintf(dbg_msg, "%s Looking for +BLECONN\r\n", __FUNCTION__);
+			HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+		}
 #endif
 
-    /* Wait for BLE connection; then enter SPP mode */
-    dl_state = DL_STATE_WAIT_CONNECT;
+		if(strstr(response_bufr, "+BLECONN"))
+		{
+			/* Respond with AT+BLECONN:0,<MAC> and enter SPP mode */
+			if (AT_SendCommand("AT+BLESPPCFG=1,1,2,1,1,0", NULL, 0, 2000, true) != AT_OK)
+				dying_gasp("AT+BLESPPCFG failed");
+			if (AT_SendCommand("AT+BLESPP", NULL, 0, 2000, true) != AT_OK)
+				dying_gasp("AT+BLESPP failed");
+
+			dl_state = DL_STATE_CONNECTED;
+		}
+    }
+
+    /* Start interrupt-driven receive for subsequent SPP traffic */
     HAL_UART_Receive_IT(STEPHANO_UART_PTR, &uart_rx_byte, 1);
 }
 
@@ -621,40 +682,47 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 void Bootloader_Download_Process(void)
 {
-
+    if (dl_state == DL_STATE_CONNECTED) {
 #if BOOTLOADER_DEBUG_ENABLE
-  {
-    char dbg_msg[128];
-    int len = sprintf(dbg_msg, "%s begin\r\n", __FUNCTION__);
-    HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
-  }
+		{
+			char dbg_msg[128];
+			int len = sprintf(dbg_msg, "%s begin\r\n", __FUNCTION__);
+			HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+		}
 #endif
-
-    if (dl_state == DL_STATE_WAIT_CONNECT) {
-        static uint32_t connect_start = 0;
-        if (connect_start == 0) connect_start = HAL_GetTick();
-        if ((HAL_GetTick() - connect_start) > 600000) {				// THIS IS THE CONNECTION WAIT TIME
-            /* Proceed to SPP mode; user should be connected */
-            HAL_UART_AbortReceive_IT(STEPHANO_UART_PTR);
-            if (AT_SendCommand("AT+BLESPP", NULL, 0, 2000) != AT_OK)
-                dying_gasp("AT+BLESPP failed");
-            HAL_UART_Receive_IT(STEPHANO_UART_PTR, &uart_rx_byte, 1);
-            dl_state = have_stored_well_id ? DL_STATE_SEND_WSM_ID : DL_STATE_SEND_WSM_MAC;
-            connect_start = 0;
-        }
-        process_rx_data();
-        return;
+		if (have_stored_well_id)
+		{
+			dl_state = DL_STATE_SEND_WSM_ID;
+		}
+		else
+		{
+			dl_state = DL_STATE_SEND_WSM_MAC;
+		}
     }
 
     if (dl_state == DL_STATE_SEND_WSM_ID) {
+#if BOOTLOADER_DEBUG_ENABLE
+		{
+			char dbg_msg[128];
+			int len = sprintf(dbg_msg, "%s send WSM ID\r\n", __FUNCTION__);
+			HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+		}
+#endif
         char buf[64];
-        snprintf(buf, sizeof(buf), "WSM ID %u", (unsigned int)well_id);
+        snprintf(buf, sizeof(buf), "WSM ID %d", well_id);
         send_line(buf);
         dl_state = DL_STATE_WAIT_ID_RESP;
         return;
     }
 
     if (dl_state == DL_STATE_SEND_WSM_MAC) {
+#if BOOTLOADER_DEBUG_ENABLE
+		{
+			char dbg_msg[128];
+			int len = sprintf(dbg_msg, "%s send WSM MAC\r\n", __FUNCTION__);
+			HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+		}
+#endif
         char buf[64];
         snprintf(buf, sizeof(buf), "WSM MAC %s", mac_buf);
         send_line(buf);
@@ -663,6 +731,13 @@ void Bootloader_Download_Process(void)
     }
 
     if (dl_state == DL_STATE_SEND_WSM_BL) {
+#if BOOTLOADER_DEBUG_ENABLE
+		{
+			char dbg_msg[128];
+			int len = sprintf(dbg_msg, "%s send WSM BL\r\n", __FUNCTION__);
+			HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+		}
+#endif
         char ver[16];
         char buf[64];
         get_bootloader_version(ver, sizeof(ver));
@@ -673,6 +748,13 @@ void Bootloader_Download_Process(void)
     }
 
     if (dl_state == DL_STATE_SEND_WSM_APP) {
+#if BOOTLOADER_DEBUG_ENABLE
+		{
+			char dbg_msg[128];
+			int len = sprintf(dbg_msg, "%s send WSM APP\r\n", __FUNCTION__);
+			HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+		}
+#endif
         char ver[16];
         char buf[64];
         get_app_version(ver, sizeof(ver));

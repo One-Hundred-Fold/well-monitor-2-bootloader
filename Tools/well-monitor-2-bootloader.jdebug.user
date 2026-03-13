@@ -1,0 +1,22 @@
+
+
+
+Breakpoint=C:/ST2/well-monitor-2-bootloader/Core/Src/bootloader_download.c:648, State=BP_STATE_ON
+Breakpoint=C:/ST2/well-monitor-2-bootloader/Core/Src/bootloader_download.c:697, State=BP_STATE_ON
+OpenDocument="stm32f4xx_hal.c", FilePath="C:/ST2/well-monitor-2-bootloader/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal.c", Line=317
+OpenDocument="main.c", FilePath="C:/ST2/well-monitor-2-bootloader/Core/Src/main.c", Line=63
+OpenDocument="bootloader_logic.c", FilePath="C:/ST2/well-monitor-2-bootloader/Core/Src/bootloader_logic.c", Line=129
+OpenDocument="cmsis_gcc.h", FilePath="C:/ST2/well-monitor-2-bootloader/Drivers/CMSIS/Include/cmsis_gcc.h", Line=943
+OpenDocument="stm32f4xx_hal_uart.c", FilePath="C:/ST2/well-monitor-2-bootloader/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c", Line=3219
+OpenDocument="bootloader_download.c", FilePath="C:/ST2/well-monitor-2-bootloader/Core/Src/bootloader_download.c", Line=632
+OpenToolbar="Debug", Floating=0, x=0, y=0
+OpenWindow="Registers 1", DockArea=RIGHT, x=0, y=1, w=300, h=344, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=0, FilteredItems=[], RefreshRate=1
+OpenWindow="Disassembly", DockArea=RIGHT, x=0, y=0, w=300, h=215, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=0
+OpenWindow="Memory 1", DockArea=BOTTOM, x=1, y=0, w=599, h=321, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=0, EditorAddress=0x8078D78
+OpenWindow="Functions", DockArea=LEFT, x=0, y=0, w=300, h=560, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=0
+OpenWindow="Console", DockArea=BOTTOM, x=0, y=0, w=593, h=321, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=0
+SmartViewPlugin="", Page="", Toolbar="Hidden", Window="SmartView 1"
+TableHeader="Functions", SortCol="Name", SortOrder="ASCENDING", VisibleCols=["Name";"Address";"Size";"#Insts";"Source"], ColWidths=[516;100;100;100;293]
+TableHeader="Power Sampling", SortCol="None", SortOrder="ASCENDING", VisibleCols=["Index";"Time";"Ch 0"], ColWidths=[100;100;100]
+TableHeader="Registers 1", SortCol="Name", SortOrder="ASCENDING", VisibleCols=["Name";"Value";"Description"], ColWidths=[100;105;131]
+TableHeader="RegisterSelectionDialog", SortCol="None", SortOrder="ASCENDING", VisibleCols=[], ColWidths=[]

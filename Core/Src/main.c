@@ -117,6 +117,9 @@ int main(void)
   /* Run second-stage bootloader: sector 6/7 search, jump, or BLE download */
   Bootloader_Run();
 
+  /* Connect to the download server. This is connect or die trying effort, so no need for status checking. */
+  Bootloader_ConnectToServer();
+
 #if BOOTLOADER_DEBUG_ENABLE
   {
     char dbg_msg[128];

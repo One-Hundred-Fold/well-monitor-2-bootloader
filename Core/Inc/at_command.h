@@ -32,7 +32,8 @@ typedef enum {
 } at_status_t;
 
 /* Exported functions prototypes ---------------------------------------------*/
-at_status_t AT_SendCommand(const char* command, char* response, uint16_t response_len, uint32_t timeout_ms);
+at_status_t AT_SendCommand(const char* command, char* response, uint16_t response_len, uint32_t timeout_ms, bool wait_for_response);
+at_status_t AT_ReceiveMessage(char* response, uint16_t response_len, uint32_t timeout_ms);
 at_status_t AT_Test(void);
 at_status_t AT_Reset(void);
 at_status_t AT_ConfigureFlowControl(void);
