@@ -1,0 +1,119 @@
+For identification, I'll discuss exchanges between a PC acting as the download server and our second-stage bootloader, which is called the Well Status Monitor (WSM).
+
+<<<< Pump movement from bottom sensor, followed XX seconds of non-movement (Rod Idle Time) triggers BLE connection establishment >>>>
+
+	(Default value of Rod Idle Time is YY seconds. A configuration parameter can change it to XX seconds.)
+
+FOR INITIAL IDENTIFICATION (no stored WELL_ID, or PC responded UNKNOWN):
+
+[PC <- WSM] If the WSM has a stored WELL_ID when communication starts, WSM sends "WSM ID {WELL_ID}" to the PC.
+	-THEN-
+		[PC -> WSM] If the PC recognizes the WELL_ID, PC responds with OK.
+		-OR-
+		[PC -> WSM] If the WELL_ID is not known to the PC, PC sends "UNKNOWN"
+
+[PC <- WSM] If the WSM does not have a stored WELL_ID when communication starts, WSM sends its IMSI.
+	-THEN-
+		[PC -> WSM] PC sends "WSM ID {WELL_ID}". {WELL_ID} is the 16-bit ID assigned to the WSM. The WSM stores this for future use.
+
+[PC <- WSM] WSM sends "WSM BL {BOOTLOADER_VERSION}".
+	-THEN-
+		[PC -> WSM] PC sends "WSM BL OK" to WSM if the second-stage bootloader is okay, -OR- "WSM BL {NEW_BOOTLOADER_VERSION} {SIZE}" IF A NEW SECOND-STAGE BOOTLOADER IS REQUIRED, along with the SIZE of NEW_BOOTLOADER_VERSION.
+
+IF A NEW SECOND_STAGE BOOTLOADER IS REQUIRED
+
+	(WSM checks SIZE to see if the new code will fit in flash sector 6. If it will, the second-stage bootloader erases flash sector 6 if it is not already erased and is ready; otherwise, it is not.)
+
+	[PC <- WSM] WSM sends "BL DL READY" when it is ready to begin the download process, -OR- "BL DL ERROR" if the WSM is somehow not ready, including not having sufficient memory for the new second-stage bootloader.
+		-THEN=
+			[PC -> WSM] PC sends "BL DATA {N} {SIZE} {DATA}" to WSM. N is a sequential packet number starting at 0, SIZE is the size of the data being sent, and DATA is the binary second-stage bootloader data.
+	
+	(WSM writes the received data to flash sector 6, starting at the beginning of the sector and appending additional data packets as they arrive.)
+
+	[PC <- WSM] WSM sends "BL DATA OKAY" when it has consumed the second-stage bootloader data packet and successfully programmed it into flash memory, or "BL DATA ERROR" if anything went wrong.
+
+	[ PC and WSM continue as above until all second-stage bootloader data has been transferred and programmed, -OR- an error occurs. ]
+
+	(WSM reboots, and the process starts over)
+	
+END IF A NEW BOOTLOADER IS REQUIRED
+
+[PC <- WSM] WSM sends "WSM APP {APP_VERSION}" to PC. APP_VERSION is the version of the WSM application.
+	-THEN-
+		[PC -> WSM] PC sends "WSM APP OK" to WSM if the application is okay, -OR- "WSM APP {NEW_APP_VERSION} {SIZE}" IF A NEW APPLICATION IS REQUIRED, along with the SIZE of NEW_APP_VERSION.
+
+IF A NEW APPLICATION IS REQUIRED
+
+	(WSM checks SIZE to see if the new code will fit in flash sector 6. If it will, the second-stage bootloader erases flash sector 6 if it is not already erased and is ready; otherwise, it is not.)
+
+	[PC <- WSM] WSM sends "APP DL READY" when it is ready to begin the download process, or "APP DL ERROR" if the WSM is not ready, including not having sufficient memory for the new application.
+		-THEN-
+			[PC -> WSM] PC sends "APP DATA {N} {SIZE} {DATA}". N is a sequential packet number starting at 0, SIZE is the size of the data being sent, and DATA is the binary application data.
+
+	(WSM writes the received data to flash sector 6, starting at the beginning of the sector and appending additional data packets as they arrive.)
+
+	[PC <- WSM] WSM sends "APP DATA OKAY" when it has consumed the application data packet and successfully programmed it into flash memory, or "APP DATA ERROR" if anything went wrong.
+
+	[ PC and WSM continue as above until all application data has been transferred and programmed, -OR- an error occurs. ]
+
+	(WSM reboots, and the process starts over)
+	
+END IF A NEW APPLICATION IS REQUIRED
+
+CONFIGURATION PARAMETERS
+
+	[PC <- WSM] WSM sends {PARAMETER_1_NAME}={PARAMETER_1_VALUE}
+		-THEN-
+			[PC -> WSM] sends {PARAMETER_1_NAME}={NEW_PARAMETER_1_VALUE} -OR- OK
+	[PC <- WSM] PC sends {PARAMETER_2_NAME}={PARAMETER_2_VALUE}
+		-THEN-
+			[PC -> WSM] sends {PARAMETER_2_NAME}={NEW_PARAMETER_2_VALUE} -OR- OK
+
+	[ PC and WSM continue as above until all Parameter data has been transferred. ]
+	
+	[PC <- WSM] sends DONE and the connection closes.
+
+	CONFIGURATION ERRORS
+	
+	If the PC does not recognize a Parameter name it responds with OK.
+	If the WSM cannot accept the Parameter/Name setting, it responds with ERROR="{REASON}", to which the PC responds with OK. It is the PC's responsibility to handle the error as it sees fit.
+
+SESSION TIMEOUT
+
+	If a BLE connetion is established and the PC does not respond for ZZ number of seconds, the session closes. The default value is TBD and can be changed by a configuration setting.
+
+OTHER ERROR HANDLING
+
+If anything not covered above goes wrong, the WSM outputs a dying gasp error message to the PC and then reboots.
+The dying gasp error message will be plain ASCII text starting with "!Error!"
+
+
+PARAMETERS
+
+	Connection Parameters
+		BLE
+			Rod Idle Time
+			Reporting Time
+		HTTPS
+			Well server URL
+			Well endpoint
+		N58
+			Reporting Time
+		Micro Server
+			Reporting Time
+	System Parameters
+		Well ID
+		Water flow calibration knees (inflection points)—needs discussion
+		Session Summary Destination (BLE, HTTPS, Wi-Fi, or a combination)—maybe something like:
+			'B' (BLE), 'H' (HTTPS), 'W' (Wi-Fi), 'BH', 'BW', 'HW', 'BHW', or '-'
+		Session Detail Destination, as above—'B', 'H', 'W', 'BH', 'BW', 'HW', 'BHW',  or '-'
+		Session Debug Destination, as above—'B', 'H', 'W', 'BH', 'BW', 'HW', 'BHW',  or '-'
+		Session Timeout Seconds
+
+STATUSES
+
+	IMSI
+	SysErr
+	SensorErr
+	BleErr
+	N58Err

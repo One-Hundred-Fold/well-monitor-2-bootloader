@@ -6,5 +6,5 @@
 ../Core/Src/stm32f4xx_it.c:142:6:SVC_Handler	0	static
 ../Core/Src/stm32f4xx_it.c:155:6:DebugMon_Handler	0	static
 ../Core/Src/stm32f4xx_it.c:168:6:PendSV_Handler	0	static
-../Core/Src/stm32f4xx_it.c:181:6:SysTick_Handler	8	static
-../Core/Src/stm32f4xx_it.c:216:6:USART2_IRQHandler	8	static
+../Core/Src/stm32f4xx_it.c:181:6:SysTick_Handler	0	static
+../Core/Src/stm32f4xx_it.c:216:6:USART2_IRQHandler	0	static

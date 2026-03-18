@@ -263,6 +263,11 @@ static bool extract_line(void)
         if (b == '\n') {
             line_buffer[line_len] = '\0';
             line_len = 0;
+#if BOOTLOADER_DEBUG_ENABLE
+            char dbg_msg[128];
+            int len = snprintf(dbg_msg, sizeof(dbg_msg), "Received '%s'\r\n", line_buffer);
+            HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+#endif
             return true;
         }
         if (b != '\r' && line_len < LINE_BUFFER_SIZE - 1)
@@ -306,7 +311,7 @@ static void handle_ble_conn_urc(const char *line)
 static void handle_id_response(const char *line)
 {
     if (dl_state == DL_STATE_WAIT_ID_RESP) {
-        if (strcmp(line, "OKAY") == 0) {
+        if (strcmp(line, "WSM ID OK") == 0) {
             dl_state = DL_STATE_SEND_WSM_BL;
         } else if (strcmp(line, "UNKNOWN") == 0) {
             dl_state = DL_STATE_SEND_WSM_MAC;
@@ -350,11 +355,11 @@ static bool parse_line(const char *line)
 static void handle_bl_response(const char *line)
 {
     if (dl_state == DL_STATE_WAIT_BL_RESP) {
-        if (strncmp(line, "WSM BL OK", 9) == 0) {
+        if (strcmp(line, "WSM BL OK") == 0) {
             dl_state = DL_STATE_SEND_WSM_APP;
             return;
         }
-        if (strncmp(line, "WSM BL ", 7) == 0) {
+        if (strcmp(line, "WSM BL ") == 0) {
             unsigned int size_val = 0;
             char new_ver[16] = {0};
             int n = sscanf(line + 7, "%15s %u", new_ver, &size_val);
@@ -383,13 +388,13 @@ static void handle_bl_response(const char *line)
 static void handle_app_response(const char *line)
 {
     if (dl_state == DL_STATE_WAIT_APP_RESP) {
-        if (strncmp(line, "WSM APP OK", 10) == 0) {
+        if (strcmp(line, "WSM APP OK") == 0) {
             /* Done - reboot to let stage-1 run */
             HAL_Delay(100);
             NVIC_SystemReset();
             return;
         }
-        if (strncmp(line, "WSM APP ", 8) == 0) {
+        if (strcmp(line, "WSM APP ") == 0) {
             unsigned int size_val = 0;
             char new_ver[16] = {0};
             int n = sscanf(line + 8, "%15s %u", new_ver, &size_val);
@@ -460,9 +465,9 @@ static void process_binary_payload(void)
         if (pending_payload_received >= pending_payload_size) {
             flush_flash_chunk();
             if (downloading_bootloader)
-                send_line("BL DATA OKAY");
+                send_line("BL DATA OK");
             else
-                send_line("APP DATA OKAY");
+                send_line("APP DATA OK");
             expected_packet++;
             pending_payload_size = 0;
             pending_payload_received = 0;
@@ -636,7 +641,7 @@ void Bootloader_ConnectToServer(void)
     if (AT_SendCommand("AT+BLEADVDATA=\"0201060B095374657068616E6F2D49\"", NULL, 0, 1000, true) != AT_OK)
         dying_gasp("AT+BLEADVDATA=\"0201060B095374657068616E6F2D49\" failed");
 
-    if (AT_SendCommand("AT+BLEADVSTART", response_bufr, sizeof(response_bufr) - 1, 10000, true) != AT_OK)
+    if (AT_SendCommand("AT+BLEADVSTART", response_bufr, sizeof(response_bufr) - 1, 60000, true) != AT_OK)
         dying_gasp("AT+BLEADVSTART failed");
 
     /* Wait up to 60 seconds for +BLECONN:0,"<MAC>" from Stephano on UART2.
@@ -682,87 +687,90 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 void Bootloader_Download_Process(void)
 {
-    if (dl_state == DL_STATE_CONNECTED) {
-#if BOOTLOADER_DEBUG_ENABLE
-		{
-			char dbg_msg[128];
-			int len = sprintf(dbg_msg, "%s begin\r\n", __FUNCTION__);
-			HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+	for (;;)
+	{
+		if (dl_state == DL_STATE_CONNECTED) {
+	#if BOOTLOADER_DEBUG_ENABLE
+			{
+				char dbg_msg[128];
+				int len = sprintf(dbg_msg, "%s begin\r\n", __FUNCTION__);
+				HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+			}
+	#endif
+			if (have_stored_well_id)
+			{
+				dl_state = DL_STATE_SEND_WSM_ID;
+			}
+			else
+			{
+				dl_state = DL_STATE_SEND_WSM_MAC;
+			}
 		}
-#endif
-		if (have_stored_well_id)
-		{
-			dl_state = DL_STATE_SEND_WSM_ID;
-		}
-		else
-		{
-			dl_state = DL_STATE_SEND_WSM_MAC;
-		}
-    }
 
-    if (dl_state == DL_STATE_SEND_WSM_ID) {
-#if BOOTLOADER_DEBUG_ENABLE
-		{
-			char dbg_msg[128];
-			int len = sprintf(dbg_msg, "%s send WSM ID\r\n", __FUNCTION__);
-			HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+		if (dl_state == DL_STATE_SEND_WSM_ID) {
+	#if BOOTLOADER_DEBUG_ENABLE
+			{
+				char dbg_msg[128];
+				int len = sprintf(dbg_msg, "%s send WSM ID %u\r\n", __FUNCTION__, well_id);
+				HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+			}
+	#endif
+			char buf[64];
+			snprintf(buf, sizeof(buf), "WSM ID %u", well_id);
+			send_line(buf);
+			dl_state = DL_STATE_WAIT_ID_RESP;
+	//        return;
 		}
-#endif
-        char buf[64];
-        snprintf(buf, sizeof(buf), "WSM ID %d", well_id);
-        send_line(buf);
-        dl_state = DL_STATE_WAIT_ID_RESP;
-        return;
-    }
 
-    if (dl_state == DL_STATE_SEND_WSM_MAC) {
-#if BOOTLOADER_DEBUG_ENABLE
-		{
-			char dbg_msg[128];
-			int len = sprintf(dbg_msg, "%s send WSM MAC\r\n", __FUNCTION__);
-			HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+		if (dl_state == DL_STATE_SEND_WSM_MAC) {
+	#if BOOTLOADER_DEBUG_ENABLE
+			{
+				char dbg_msg[128];
+				int len = sprintf(dbg_msg, "%s send WSM MAC %s\r\n", __FUNCTION__, mac_buf);
+				HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+			}
+	#endif
+			char buf[64];
+			snprintf(buf, sizeof(buf), "WSM MAC %s", mac_buf);
+			send_line(buf);
+			dl_state = DL_STATE_WAIT_WSM_ID;
+	//        return;
 		}
-#endif
-        char buf[64];
-        snprintf(buf, sizeof(buf), "WSM MAC %s", mac_buf);
-        send_line(buf);
-        dl_state = DL_STATE_WAIT_WSM_ID;
-        return;
-    }
 
-    if (dl_state == DL_STATE_SEND_WSM_BL) {
-#if BOOTLOADER_DEBUG_ENABLE
-		{
-			char dbg_msg[128];
-			int len = sprintf(dbg_msg, "%s send WSM BL\r\n", __FUNCTION__);
-			HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+		if (dl_state == DL_STATE_SEND_WSM_BL) {
+			char ver[16];
+			char buf[64];
+			get_bootloader_version(ver, sizeof(ver));
+	#if BOOTLOADER_DEBUG_ENABLE
+			{
+				char dbg_msg[128];
+				int len = sprintf(dbg_msg, "%s send WSM BL %s\r\n", __FUNCTION__, ver);
+				HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+			}
+	#endif
+			snprintf(buf, sizeof(buf), "WSM BL %s", ver);
+			send_line(buf);
+			dl_state = DL_STATE_WAIT_BL_RESP;
+	//        return;
 		}
-#endif
-        char ver[16];
-        char buf[64];
-        get_bootloader_version(ver, sizeof(ver));
-        snprintf(buf, sizeof(buf), "WSM BL %s", ver);
-        send_line(buf);
-        dl_state = DL_STATE_WAIT_BL_RESP;
-        return;
-    }
 
-    if (dl_state == DL_STATE_SEND_WSM_APP) {
-#if BOOTLOADER_DEBUG_ENABLE
-		{
-			char dbg_msg[128];
-			int len = sprintf(dbg_msg, "%s send WSM APP\r\n", __FUNCTION__);
-			HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+		if (dl_state == DL_STATE_SEND_WSM_APP) {
+			char ver[16];
+			char buf[64];
+			get_app_version(ver, sizeof(ver));
+	#if BOOTLOADER_DEBUG_ENABLE
+			{
+				char dbg_msg[128];
+				int len = sprintf(dbg_msg, "%s send WSM APP %s\r\n", __FUNCTION__, ver);
+				HAL_UART_Transmit(&huart1, (uint8_t*)dbg_msg, len, 1000);
+			}
+	#endif
+			snprintf(buf, sizeof(buf), "WSM APP %s", ver);
+			send_line(buf);
+			dl_state = DL_STATE_WAIT_APP_RESP;
+	//        return;
 		}
-#endif
-        char ver[16];
-        char buf[64];
-        get_app_version(ver, sizeof(ver));
-        snprintf(buf, sizeof(buf), "WSM APP %s", ver);
-        send_line(buf);
-        dl_state = DL_STATE_WAIT_APP_RESP;
-        return;
-    }
 
-    process_rx_data();
+		process_rx_data();
+	}
 }

@@ -1,5 +1,5 @@
 ../Core/Src/at_command.c:27:13:AT_SendCommand	424	static
-../Core/Src/at_command.c:115:13:AT_ReceiveMessage	160	static
+../Core/Src/at_command.c:115:13:AT_ReceiveMessage	152	static
 ../Core/Src/at_command.c:153:13:AT_Test	16	static
 ../Core/Src/at_command.c:158:13:AT_Reset	16	static
 ../Core/Src/at_command.c:163:13:AT_ConfigureFlowControl	16	static
